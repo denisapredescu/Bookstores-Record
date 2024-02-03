@@ -1,0 +1,349 @@
+--EXERCITIUL 1 
+--Determinati cartile vandute in Cluj(judet) in ordinea numarului de exemplare vandute, de la bestseller pana la 
+--cea care este vanduta de cele mai putine ori. Se mentioneaza numarul de exemplare vandute si titlul acestora.
+SELECT COUNT(cod_carte) NUMAR_CARTI_VANDUTE, nume TITLU 
+FROM bonuri INNER JOIN carti USING (cod_carte)
+WHERE cod_angajat IN (
+        SELECT cod_angajat
+        FROM angajati
+        WHERE LOWER(tip_angajat) = 'vanzator' 
+        AND cod_librarie IN (
+                SELECT cod_librarie
+                FROM librarii
+                WHERE cod_oras IN (
+                        SELECT cod_oras
+                        FROM orase
+                        WHERE NVL(LOWER(judet),'-') = 'cluj'
+                                  )
+                            )
+                    )
+GROUP BY cod_carte, nume
+ORDER BY COUNT(cod_carte) DESC;
+
+
+--EXERCITIUL 2 
+--Sa se determine codul librariei cu cea mai mica suma castigata in urma vanzarilor.
+WITH profit AS ( 
+            SELECT pret, cod_librarie
+            FROM bonuri LEFT JOIN angajati USING (cod_angajat) 
+                        LEFT JOIN librarii USING (cod_librarie)
+              
+                )
+SELECT cod_librarie, SUM(pret) suma
+FROM profit
+GROUP BY cod_librarie
+HAVING SUM(pret) = ( 
+                SELECT MIN(SUM(pret)) profit_minin
+                FROM profit
+                GROUP BY cod_librarie
+                    );
+           
+
+--EXERCITIUL 3
+--Unde lucreaza si cate vanzari a efectuat un vanzator dat de la tastatura.        
+ACCEPT nume PROMPT 'Introduceti numele si prenumele angajatului: ' 
+SELECT  ang.nume,
+        ang.prenume,
+        CASE
+            WHEN o.judet IS NOT NULL THEN o.judet
+            ELSE o.denumire 
+        END LUCREAZA_IN,
+        (
+            SELECT COUNT(*) 
+            FROM bonuri
+            WHERE cod_angajat = ang.cod_angajat
+        ) VANZARI
+FROM angajati ang 
+        JOIN librarii lib ON (ang.cod_librarie = lib.cod_librarie) 
+        JOIN locatii loc ON (lib.cod_locatie = loc.cod_locatie) 
+        JOIN orase o ON (loc.cod_oras = o.cod_oras)
+WHERE INSTR(LOWER('&nume'), LOWER(ang.nume)) <> 0 
+    AND INSTR(LOWER('&nume'), LOWER(ang.prenume)) <> 0;
+
+
+--EXERCITIUL 4 
+--Cate carti sunt in librarii impartite in functie de scriitor.
+SELECT nume, prenume, NVL(aparitii, 0) CARTI
+FROM scriitori LEFT JOIN (
+            SELECT cod_scriitor, COUNT(DISTINCT(cod_carte)) aparitii
+            FROM are
+            GROUP BY cod_scriitor
+                        ) USING (cod_scriitor);
+
+
+-- EXERCITIUL 5
+--Sa se gaseasca toti scriitorii (prenume + nume) care au scris carti in toate categoriile de carti disponibile.
+SELECT s.prenume || ' ' || s.nume AS NUME_AUTOR
+FROM scriitori s
+WHERE NOT EXISTS (
+        SELECT * 
+        FROM categorii categ
+        WHERE NOT EXISTS (
+            SELECT *
+            FROM are ar
+            WHERE ar.cod_categorie = categ.cod_categorie
+                AND ar.cod_scriitor = s.cod_scriitor
+                        )
+                );    
+           
+            
+-- EXERCITIUL 6
+--Dandu-se titlul unei carti, sa se determine informatii despre carte (numele scriitorului si limba in care se poate gasi) 
+--si detalii despre cate exemplare se gasesc pe stoc si in ce librarii. Sa se trateze cazurile in care nu se cunoaste autorul, nu 
+--se gasesc informatii despre limbile in care este tradusa cartea, precum si daca se gaseste sau nu pe stoc.
+ACCEPT nume PROMPT 'Nume carte: ' 
+SELECT c.nume AS NUME_CARTE,
+       DECODE(nume_scriitor, NULL, 'Necunoscut', nume_scriitor) AS NUME_AUTOR,
+       DECODE(l.limba, NULL, 'Necunoscuta', l.limba) AS LIMBA_TRADUSA,
+       DECODE(loc.strada, NULL, 'Nu se mai gaseste pe stoc', loc.strada || ' ' || TO_CHAR(loc.numar)) AS ADRESA,
+       NVL(st.nr_exemplare, 0) EXEMPLARE
+FROM (
+        SELECT nume, cod_carte
+        FROM carti
+        WHERE INSTR(LOWER('&nume'), LOWER(nume)) <> 0
+    ) c
+    LEFT JOIN (
+            SELECT DISTINCT(cod_carte) cod_carte, nume nume_scriitor
+            FROM scriitori RIGHT JOIN are USING (cod_scriitor)
+           ) scr ON scr.cod_carte = c.cod_carte
+    LEFT JOIN traduceri t ON c.cod_carte = t.cod_carte
+    LEFT JOIN limbi l ON t.cod_limba = l.cod_limba
+    LEFT JOIN stocuri st ON c.cod_carte = st.cod_carte
+    LEFT JOIN librarii lib ON st.cod_librarie = lib.cod_librarie
+    LEFT JOIN locatii loc ON lib.cod_locatie = loc.cod_locatie AND lib.cod_oras = loc.cod_oras;
+
+
+-- EXERCITIUL 7
+--Comparati cate carti au fost vandute pana in prezent fata de cate carti au fost vandute acum un an si 
+--calculati cu cate s-au vandut mai multe in prezent fata de atunci.
+SELECT PREZENT, NUMAR_IN_PREZENT,  ACUM_12_LUNI, NUMAR_ACUM_12_LUNI,  NUMAR_IN_PREZENT - NUMAR_ACUM_12_LUNI CRESTERE
+FROM (
+    SELECT COUNT(*) NUMAR_IN_PREZENT, SYSDATE PREZENT 
+    FROM bonuri b
+),(
+    SELECT COUNT(*) NUMAR_ACUM_12_LUNI, TO_CHAR(ADD_MONTHS(SYSDATE, -12), 'DD-MON-YYYY') ACUM_12_LUNI
+    FROM bonuri
+    WHERE TO_DATE(data_bon, 'DD-MON-YYYY') <= TO_DATE(ADD_MONTHS(SYSDATE, -12), 'DD-MON-YYYY')
+);  
+
+
+--EXERCITIUL 8
+--Afiseaza acum cate luni a fost vanduta cartea 'Mostenirea' si de cate ori a fost vanduta in acele luni.
+--am folosit functiile sysdate, round, months_between                     
+SELECT ROUND(MONTHS_BETWEEN(SYSDATE, data_bon)) AS LUNI_TRECUTE, COUNT(*) AS EXEMPLARE_VANDUTE
+FROM bonuri 
+WHERE cod_carte = (
+                    SELECT cod_carte
+                    FROM carti
+                    WHERE LOWER(nume) = 'mostenirea' 
+                  )
+GROUP BY ROUND(MONTHS_BETWEEN(SYSDATE, data_bon));
+     
+     
+--EXERCITIUL 9
+--Sa se determine numarul maxim de pagini si numarul mediu de pagini a cartilor in functie de categorii. 
+--Cartile care nu se incadreaza in nicio categorie, vor fi puse intr-o categorie noua numita 'fara categorie'
+SELECT DECODE(c.gen, NULL, 'fara categorie', c.gen) AS CATEGORY,
+       NVL(MAX(ca.numar_pagini), 0) AS MAX_PAGINI,
+       NVL(ROUND(AVG(ca.numar_pagini), 2), 0) AS AVG_PAGINI
+FROM  (
+    SELECT a.cod_categorie, ca.numar_pagini
+    FROM carti ca FULL JOIN are a ON ca.cod_carte = a.cod_carte
+) ca FULL JOIN categorii c ON c.cod_categorie = ca.cod_categorie
+GROUP BY c.gen
+ORDER BY c.gen;
+
+
+--EXERCITIUL 10
+--Sa se determine cartile care au fost vandute in ultimele 12 luni si care inca se mai gasesc in stocul cel putin al 
+--unei librarii, mentionandu-se daca pretul vanzarii a fost diferit candva de cel curent.
+SELECT cod_carte, nume, 
+        CASE
+            WHEN SUM(este_diferit) = 0
+            THEN 'nu'
+            ELSE 'da'
+        END CUMPARARE_CU_PRET_DIFERIT
+FROM (   
+        SELECT cod_carte, nume,
+                CASE 
+                    WHEN c.pret = bon.pret
+                    THEN 0
+                    ELSE 1
+                END este_diferit
+        FROM carti c JOIN (
+                            SELECT cod_carte, pret
+                            FROM bonuri
+                        ) bon USING (cod_carte)
+        WHERE cod_carte in ( 
+                    SELECT DISTINCT(cod_carte)
+                    FROM bonuri
+                    WHERE ADD_MONTHS(TO_DATE(data_bon), 12) >= SYSDATE
+                    
+                    INTERSECT 
+                    
+                    SELECT DISTINCT(cod_carte)
+                    FROM stocuri
+                            )
+        )
+GROUP BY cod_carte, nume;
+   
+   
+--EXERCITIUL 11
+--Sa se determine ce carti care au fost publicate dupa anul 1990 sunt disponibile din libraria cu 
+--codul 70 si nu s-au vandut niciodata. 
+SELECT c.nume AS TITLU_CARTE
+FROM carti c
+WHERE c.cod_carte IN (
+        SELECT s.cod_carte
+        FROM stocuri s
+        WHERE s.cod_librarie = 70 
+    ) AND an_aparitie > 1990
+
+MINUS
+
+SELECT nume AS TITLU_CARTE
+FROM carti c
+WHERE c.cod_carte IN (
+        SELECT DISTINCT(b.cod_carte)
+        FROM bonuri b
+    );
+  
+
+-- EXERCITIUL 12
+--Se doreste sa se ofere o marire pentru angajatii care au facut vanzari mari in ultimul an. Vanzari mari inseamna ca suma 
+--este peste 100 lei. Se va afisa o lista cu toti vanzatorii a caror nume este codificat. Codificarea se realizeaza astfel: 
+--concatenarea primei litere din nume, primei litere din prenume si a codului unic. In plus se afiseaza pentru fiecare angajat 
+--valoarea salariului actual, valoarea vanzarilor facute si, daca vanzatorul merita marirea, se afiseaza si valoarea noua a 
+--salariului dupa marire. Altfel se afiseaza NULL.
+SELECT SUBSTR(nume, 1, 1) || SUBSTR(prenume, 1, 1) || cod_angajat cod, 
+        salariu SALARIU, 
+        vanzari VALOARE_VANZARI,
+        CASE
+            WHEN NULLIF(trunc(vanzari/100), 0) IS NOT NULL 
+            THEN salariu * 1.1
+            ELSE NULL
+        END MARIRE
+FROM angajati LEFT JOIN ( 
+                            SELECT cod_angajat, SUM(pret) vanzari 
+                            FROM bonuri
+                            WHERE ADD_MONTHS(data_bon, 12) > SYSDATE
+                            GROUP BY cod_angajat
+                        ) USING (cod_angajat)
+WHERE UPPER(tip_angajat) = 'VANZATOR';
+
+
+-- EXERCITIUL 13
+--Sa se afiseze structura categoriilor intr-un mod vizibil (categoria principala, apoi subcategoriile care sunt incluse). 
+--Impreuna cu aceasta structura, trebuie sa se mai afiseze cateva detalii precum codul cartii, codul categoriei parinte 
+--(daca are, altfel un mesaj scurt), nivelul pe care se afla acea categorie si numarul de carti din baza de date pentru care 
+--s-a specificat ca este de acel gen.
+SELECT LPAD(' ', 2 * LEVEL - 2) || gen AS NUME,
+       cod_categorie,
+       DECODE(parinte_cod_categorie, NULL, 'nu are', parinte_cod_categorie) AS COD_PARINTE,
+       LEVEL,
+       (
+        SELECT COUNT(DISTINCT(cod_carte))
+        FROM are 
+        WHERE are.cod_categorie = categorii.cod_categorie
+       ) AS NUMAR_CARTI
+FROM categorii
+START WITH parinte_cod_categorie IS NULL
+CONNECT BY PRIOR cod_categorie = parinte_cod_categorie
+ORDER SIBLINGS BY gen, cod_categorie;
+
+         
+-- EXERCITIUL 14
+--Managerul vrea sa promoveze citirea cartilor in alte limbi si a celor scrise de autori straini. 
+--De aceea doreste sa afle numele cartilor accesibile (pret de cel mult 30 lei) în ordinea pretului de vanzare 
+--care sunt traduse in orice alta limba decat romana si celor scrise de autori straini,
+--specificandu-se pentru fiecare din care categorie face parte sau daca se încadrează în ambele. 
+WITH carti_limba_straina AS (
+        SELECT cod_carte, nume, pret
+        FROM carti c
+        WHERE EXISTS (
+                SELECT * 
+                FROM limbi lim LEFT JOIN traduceri tr USING (cod_limba)
+                WHERE UPPER(lim.limba) <> 'ROMANA' 
+                    AND tr.cod_carte = c.cod_carte
+                )
+            AND pret <= 30 
+),
+    carti_autori_straini AS (
+        SELECT cod_carte, nume, pret
+        FROM carti c
+        WHERE NOT EXISTS (
+                SELECT * 
+                FROM scriitori LEFT JOIN are USING (cod_scriitor)
+                WHERE UPPER(nationalitate) = 'ROMANA'
+                    AND are.cod_carte = c.cod_carte
+                    )
+            AND pret <= 30
+    ),
+    carti_autor_si_limba_straina AS (
+        SELECT cod_carte, nume, pret  
+        FROM carti_limba_straina
+        INTERSECT
+        SELECT cod_carte, nume, pret
+        FROM carti_autori_straini
+    )
+SELECT cod_carte, nume, pret, categorie
+FROM (
+    SELECT cod_carte, nume, pret, 'limba straina' AS categorie 
+    FROM ( 
+        SELECT *
+        FROM carti_limba_straina
+        MINUS 
+        SELECT *
+        FROM carti_autor_si_limba_straina
+    ) 
+    UNION
+    SELECT cod_carte, nume, pret, 'autor strain' AS categorie  
+    FROM (
+        SELECT *
+        FROM carti_autori_straini
+        MINUS  
+        SELECT *
+        FROM carti_autor_si_limba_straina
+    )
+    UNION 
+    SELECT cod_carte, nume, pret, 'limba straina + autor strain' AS categorie   
+    FROM carti_autor_si_limba_straina
+)
+ORDER BY pret;
+   
+
+-- EXERCITIUL 15
+--Precizati codul, numele si numarul de carti vandute de angajatii care au vandut un numar maxim de carti, selectandu-i 
+--doar pe aceia care lucreaza la o librarie care are numar maxim de angajati. Sa se precizeze si unde se gasesc 
+--aceste librarii (strada).
+
+SELECT bon.cod_angajat, 
+      nume AS NUME_ANGAJAT, 
+      COUNT(cod_carte) AS NUMAR_VANZARI, 
+      strada AS LOCATIE_LIBRARIE
+FROM bonuri bon JOIN angajati ang ON bon.cod_angajat = ang.cod_angajat
+                JOIN ( 
+                        SELECT cod_librarie, strada
+                        FROM locatii join librarii USING (cod_locatie)
+            ) loc ON loc.cod_librarie = ang.cod_librarie
+HAVING COUNT(bon.cod_angajat) = (
+                        SELECT MAX(COUNT(cod_angajat)) 
+                        FROM bonuri
+                        GROUP BY cod_angajat
+                    )    --numarul maxim de carti vandute de un angajat
+    AND bon.cod_angajat in ( 
+                SELECT cod_angajat   
+                FROM angajati
+                WHERE cod_librarie in ( 
+                            SELECT cod_librarie 
+                            FROM angajati
+                            GROUP BY cod_librarie
+                            HAVING COUNT(cod_librarie) = ( 
+                                            SELECT MAX(COUNT(cod_librarie)) max_libr   
+                                            FROM angajati
+                                            GROUP BY cod_librarie
+                                        )
+                     )
+                )   --angajatii care lucreaza intr-o librarie cu numar maxim de angajati
+GROUP BY bon.cod_angajat, nume, strada;
+

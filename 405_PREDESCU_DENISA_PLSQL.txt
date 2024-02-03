@@ -1,0 +1,859 @@
+-- EXERCITIUL 8
+CREATE TABLE MESAJE (
+    Message_id NUMBER CONSTRAINT PKEY_MESAJE PRIMARY KEY,
+    Message VARCHAR2(255),
+    Message_type VARCHAR2(1) CONSTRAINT TYPE_CONSTRAINT CHECK (Message_type IN ('E', 'W', 'I')),
+    Created_by VARCHAR2(40) NOT NULL,
+    Created_at DATE NOT NULL
+);
+
+COMMENT ON COLUMN MESAJE.Message_id IS 'Cheie primar?';
+COMMENT ON COLUMN MESAJE.Message_type IS 'Valid values: E - Error, W - Warning, I - Information';
+COMMENT ON COLUMN MESAJE.Created_by IS 'NOT NULL';
+COMMENT ON COLUMN MESAJE.Created_at IS 'NOT NULL';
+
+-- EXERCITIUL 9
+
+SET SERVEROUTPUT ON;
+
+--EXERCITIUL 9.1
+--Se doreste sa se tina evidenta celor mai vandute categorii din librarii. Dar se tine cont doar de cartile vandute in anul 
+--curent, afisandu-se cat de cautate sunt acele categorii si, pentru fiecare categorie, se determina lista de carti vandute 
+--de acel gen si de cate ori au fost vandute.
+
+CREATE OR REPLACE PROCEDURE categoriile_cele_mai_vandute
+IS
+    -- tip de date record pentru a retine detalii despre o carte vanduta
+    TYPE info_carte_record IS RECORD (
+        nume CARTI.nume%TYPE,
+        cod are.cod_carte%TYPE,
+        copies_sold NUMBER
+    );
+    
+    -- tablou imbricat pentru a retine informatii despre toate cartile vandute 
+    TYPE info_carte_tip IS TABLE OF info_carte_record;
+    v_carti_vandute info_carte_tip;
+    
+    -- tablou imbricat in care se va retine numarul de vanzari a fiecarei categorii vandute
+    TYPE count_categorie_tip IS TABLE OF NUMBER INDEX BY PLS_INTEGER;
+    v_count_categorii count_categorie_tip;
+    
+    -- Vector in care retin coduri cartilor care se incadreaza intr-o categories
+    TYPE coduri_carti_tip IS VARRAY(100) OF carti.cod_carte%TYPE;
+    v_coduri_carti coduri_carti_tip := coduri_carti_tip();
+    
+    v_maxim NUMBER := 0;
+    v_categorie categorii.gen%TYPE;
+BEGIN
+    -- Pastrarea cartilor vandute si numarului de vanzari
+    SELECT c.nume, b.cod_carte, COUNT(*)
+    BULK COLLECT INTO v_carti_vandute
+    FROM carti c RIGHT JOIN bonuri b ON c.cod_carte = b.cod_carte
+    WHERE EXTRACT(YEAR FROM data_bon) = EXTRACT(YEAR FROM SYSDATE)
+    GROUP BY c.nume, b.cod_carte;
+    
+    -- determinarea categoriilor care au fost vandute si a numarului de vanzari
+    FOR index_carte IN v_carti_vandute.FIRST .. v_carti_vandute.LAST 
+    LOOP
+        FOR categorie IN (
+                            SELECT DISTINCT cod_categorie cod
+                            FROM are 
+                            WHERE v_carti_vandute(index_carte).cod = are.cod_carte
+                          ) 
+        LOOP
+            IF v_count_categorii.EXISTS(categorie.cod)
+            THEN
+                v_count_categorii(categorie.cod) := v_count_categorii(categorie.cod) + v_carti_vandute(index_carte).copies_sold;
+            ELSE
+                v_count_categorii(categorie.cod) := v_carti_vandute(index_carte).copies_sold;
+            END IF;
+            
+            IF v_count_categorii(categorie.cod) > v_maxim 
+            THEN
+                v_maxim := v_count_categorii(categorie.cod);
+            END IF;
+        END LOOP;
+    END LOOP;
+    
+    IF v_maxim <> 0 
+    THEN
+        DBMS_OUTPUT.PUT_LINE('Numarul maxim de carti dintr-un anumit tip de categorie vandute: ' || v_maxim);
+        DBMS_OUTPUT.PUT_LINE('');
+        
+        -- Match-uirea categorie-carte si afisarea informatiilor dorite
+        FOR index_cod_categorie IN v_count_categorii.FIRST .. v_count_categorii.LAST LOOP
+            IF v_count_categorii.EXISTS(index_cod_categorie) THEN 
+                IF v_count_categorii(index_cod_categorie) = v_maxim THEN
+                    SELECT gen into v_categorie
+                    FROM categorii
+                    WHERE cod_categorie = index_cod_categorie;
+                    
+                    DBMS_OUTPUT.PUT_LINE('> Categorie:  '|| v_categorie);
+                    
+                    SELECT DISTINCT cod_carte 
+                    BULK COLLECT INTO v_coduri_carti 
+                    FROM are 
+                    WHERE index_cod_categorie = are.cod_categorie;
+                    
+                    FOR index_cod IN v_coduri_carti.FIRST .. v_coduri_carti.LAST LOOP
+                        FOR index_carte IN v_carti_vandute.FIRST .. v_carti_vandute.LAST LOOP
+                            IF v_carti_vandute(index_carte).cod = v_coduri_carti(index_cod) THEN
+                                DBMS_OUTPUT.PUT_LINE(' - ' || 
+                                                    v_carti_vandute(index_carte).nume || 
+                                                    ': vanduta de ' || 
+                                                    v_carti_vandute(index_carte).copies_sold || ' ori');
+                            END IF;
+                        END LOOP;
+                    END LOOP;
+                END IF;
+            END IF;
+        END LOOP;
+    ELSE 
+        DBMS_OUTPUT.PUT_LINE('Nu au fost cumparate carti in anul curent.');
+    END IF;
+    
+END categoriile_cele_mai_vandute;
+/
+
+execute categoriile_cele_mai_vandute;
+
+
+--EXERCITIUL 9.2
+--Pentru fiecare scriitor din baza de date determinati cat costa fiecare serie pe care a 
+--scris-o in cazul in care cumparatorul ar dori sa cumpere toate volumele. 
+--Se doreste sa se afiseze pentru fiecare serie pretul acesteia, precum si un mesaj 
+--sugestiv in cazul in care scriitorul nu a scris nicio serie de carti sau nu are carti introduse.
+
+CREATE OR REPLACE PROCEDURE pret_serie
+IS
+    CURSOR scriitori_cu_carti IS
+        SELECT nume, prenume, cod_scriitor, NVL(aparitii, 0) 
+        FROM scriitori LEFT JOIN (
+                                    SELECT cod_scriitor, COUNT(DISTINCT(cod_carte)) aparitii
+                                    FROM are
+                                    GROUP BY cod_scriitor
+                                ) USING (cod_scriitor);
+          
+    CURSOR suma_serie (p_cod_scriitor scriitori.cod_scriitor%TYPE) IS
+        SELECT sum(pret) suma, serii.nume
+        FROM carti LEFT JOIN serii USING (cod_serie)
+        WHERE cod_serie IS NOT NULL 
+            AND cod_carte IN (  
+                                SELECT DISTINCT cod_carte 
+                                FROM are
+                                WHERE cod_scriitor = p_cod_scriitor 
+                              )
+        GROUP BY serii.nume;
+    
+    v_serie serii.nume%TYPE;
+    v_suma NUMBER;
+    v_cod_scriitor scriitori.cod_scriitor%TYPE;
+    v_nume scriitori.nume%TYPE;
+    v_prenume scriitori.prenume%TYPE; 
+    v_aparitii NUMBER;
+BEGIN
+    OPEN scriitori_cu_carti;
+    LOOP
+        FETCH scriitori_cu_carti INTO v_nume, v_prenume, v_cod_scriitor, v_aparitii;
+        EXIT WHEN scriitori_cu_carti%NOTFOUND;
+        
+        DBMS_OUTPUT.PUT_LINE(CHR(10)||'Scriitorul '||v_nume||' '||v_prenume);
+           
+        IF v_aparitii <> 0 
+        THEN 
+            OPEN suma_serie(v_cod_scriitor);
+            LOOP
+                FETCH suma_serie INTO v_suma, v_serie;
+                EXIT WHEN suma_serie%NOTFOUND;
+                
+                DBMS_OUTPUT.PUT_LINE(CHR(9) ||'Seria "'||v_serie||'" costa '||v_suma|| ' lei.');
+            END LOOP;
+            
+            IF suma_serie%ROWCOUNT = 0 THEN 
+                DBMS_OUTPUT.PUT_LINE(CHR(9) ||'Nu exista in librarie nicio serie scrisa de acest scriitor.');
+            END IF;
+            
+            CLOSE suma_serie;
+        ELSE 
+             DBMS_OUTPUT.PUT_LINE(CHR(9) ||'Nu exista in librarie nicio carte scrisa de acest scriitor.');
+        END IF;   
+    END LOOP; 
+    
+    IF scriitori_cu_carti%ROWCOUNT = 0 THEN 
+        DBMS_OUTPUT.PUT_LINE(CHR(10) ||'Nu exista niciun scriitor in baza de date.');
+    END IF;
+            
+    CLOSE scriitori_cu_carti;
+    
+    EXCEPTION
+       WHEN OTHERS THEN
+            INSERT INTO mesaje 
+            VALUES (SEQ_ERROR.NEXTVAL, 'A aparut o eroare necunoscuta', 'E', SYS.LOGIN_USER, SYSDATE);
+            RAISE_APPLICATION_ERROR(-20004, 'A aparut o eroare necunoscuta');
+END pret_serie;
+/
+
+BEGIN
+    pret_serie;   
+    
+    EXCEPTION
+       WHEN OTHERS THEN 
+            DBMS_OUTPUT.PUT_LINE('Eroarea are codul = '||SQLCODE || ' si mesajul = ' || SQLERRM);
+END;
+/
+
+
+--EXERCITIUL 9.3
+--Intr-o libraria de la o locatie data prin nume vine un client care doreste sa cumpere o carte
+--anume, data prin titlu. Sa se precizeze fiecare caz posibil, anume cartea sa existe in
+--libraria respectiva si sa se creeze un nou bon (nu conteaza ce vanzator o vinde) si sa se modifice
+--numarul de exemplare disponibile pe stoc, dar si cazul in care cartea nu exista pe stoc.
+
+CREATE OR REPLACE FUNCTION client_cumpara_carte(p_carte_ceruta carti.nume%TYPE DEFAULT 'no_name',
+                                                p_librarie_solicitanta locatii.strada%TYPE DEFAULT 'no_adress')
+    RETURN carti.pret%TYPE IS
+    
+    v_evidenta NUMBER;
+    v_cod_carte stocuri.cod_carte%TYPE;
+    v_cod_librarie_care_vinde stocuri.cod_librarie%TYPE;
+    v_pret_cumparare carti.pret%TYPE;
+    v_bon bonuri%ROWTYPE;
+    NU_EXISTA_CARTE EXCEPTION;
+    NU_EXISTA_LIBRARIE EXCEPTION;
+    NU_EXISTA_CARTEA_PE_STOC EXCEPTION;
+    v_mesaj_eroare VARCHAR2(100);
+BEGIN
+    SELECT COUNT(*)
+    INTO v_evidenta
+    FROM carti
+    WHERE UPPER(nume) = UPPER(p_carte_ceruta);
+    
+    IF v_evidenta = 0 THEN
+        RAISE NU_EXISTA_CARTE;
+    END IF;
+    
+    SELECT COUNT(*)
+    INTO v_evidenta
+    FROM locatii
+    WHERE UPPER(strada) = UPPER(p_librarie_solicitanta);
+    
+    IF v_evidenta = 0 THEN
+        RAISE NU_EXISTA_LIBRARIE;
+    END IF;
+    
+    UPDATE stocuri 
+    SET nr_exemplare = nr_exemplare - 1
+    WHERE (cod_carte, cod_librarie) = 
+            (   -- daca cartea se gaseste in librarie, select-ul va intoarce o linie
+                SELECT cod_carte, st.cod_librarie   
+                FROM locatii loc JOIN librarii lib ON (loc.cod_locatie=lib.cod_locatie) 
+                                 JOIN (-- selectez toate codurile librariile in care se gaseste cartea dorita
+                                        SELECT cod_carte, cod_librarie    
+                                        FROM carti JOIN stocuri USING (cod_carte)
+                                        WHERE UPPER(nume) = UPPER(p_carte_ceruta)
+                                      ) st ON(st.cod_librarie = lib.cod_librarie) 
+                WHERE UPPER(strada) = UPPER (p_librarie_solicitanta) 
+            )
+    RETURNING cod_carte, cod_librarie INTO v_cod_carte, v_cod_librarie_care_vinde;
+       
+    -- UPDATE nu intoarce NO_DATA_FOUND 
+    IF SQL%rowcount = 0 THEN    
+        RAISE NU_EXISTA_CARTEA_PE_STOC;    
+    END IF;
+    
+    -- carte este vanduta, se selecteaza pretul pentru a putea crea bonul 
+    SELECT pret 
+    INTO v_pret_cumparare
+    FROM carti
+    WHERE cod_carte = v_cod_carte; 
+
+    SELECT SEQ_CUMP.NEXTVAL, v_pret_cumparare, 
+                            SYSDATE, v_cod_carte, (
+                                SELECT cod_angajat
+                                FROM (  -- se alege in mod random un vanzator care lucreaza la acea librarie
+                                        -- pentru ca fiecare sa aiba sansa egala de a vinde 
+                                        SELECT cod_angajat  
+                                        FROM angajati
+                                        WHERE cod_librarie = v_cod_librarie_care_vinde AND LOWER(tip_angajat) = 'vanzator'
+                                        ORDER BY DBMS_RANDOM.RANDOM
+                                    )
+                                WHERE ROWNUM = 1
+                            )  
+    INTO v_bon
+    FROM dual;
+    
+    INSERT INTO bonuri 
+    VALUES v_bon;
+    
+    -- cartea poate avea reducere, deci preluam din nou bonul pentru a-l putea transmite clientului
+    SELECT pret 
+    INTO v_pret_cumparare
+    FROM bonuri
+    WHERE cod_bon = v_bon.cod_bon; 
+
+    RETURN v_pret_cumparare;
+    
+    EXCEPTION
+        WHEN NU_EXISTA_CARTE THEN 
+            v_mesaj_eroare := 'Nu exista cartea ceruta '|| p_carte_ceruta || ' in baza noastra de date.';
+            INSERT INTO mesaje 
+            VALUES (SEQ_ERROR.NEXTVAL, v_mesaj_eroare, 'E', SYS.LOGIN_USER, SYSDATE); 
+            RAISE_APPLICATION_ERROR(-20001, v_mesaj_eroare);
+            
+        WHEN NU_EXISTA_LIBRARIE THEN 
+            v_mesaj_eroare := 'Nu exista nicio librarie la adresa data - '|| p_librarie_solicitanta;
+            INSERT INTO mesaje 
+            VALUES (SEQ_ERROR.NEXTVAL, v_mesaj_eroare, 'E', SYS.LOGIN_USER, SYSDATE);
+            RAISE_APPLICATION_ERROR(-20002, v_mesaj_eroare);
+              
+        WHEN NU_EXISTA_CARTEA_PE_STOC THEN 
+            v_mesaj_eroare := 'Ne pare rau, nu avem cartea '|| p_carte_ceruta || 
+                                ' pe stoc la locatia ' || p_librarie_solicitanta;
+            INSERT INTO mesaje 
+            VALUES (SEQ_ERROR.NEXTVAL, v_mesaj_eroare, 'E', SYS.LOGIN_USER, SYSDATE);
+            RAISE_APPLICATION_ERROR(-20003, v_mesaj_eroare);
+                                    
+        WHEN OTHERS THEN
+            v_mesaj_eroare := SQLERRM;
+            INSERT INTO mesaje 
+            VALUES (SEQ_ERROR.NEXTVAL, v_mesaj_eroare, 'E', SYS.LOGIN_USER, SYSDATE);
+            RAISE_APPLICATION_ERROR(-20004, v_mesaj_eroare);
+    
+END client_cumpara_carte;
+/
+
+DECLARE
+--    Clientul a platit 30.6 lei pe cartea Invitatia la vals.
+    carte carti.nume%TYPE := 'Invitatia la vals'; 
+    strada locatii.strada%TYPE := 'Strada Doamnei'; 
+--   
+--    Eroarea are codul = -20003 si mesajul = ORA-20003: Ne pare rau, nu avem cartea Invitatia la vals pe stoc la locatia Strada Fierului
+--    carte carti.nume%TYPE := 'Invitatia la vals';
+--    strada locatii.strada%TYPE := 'Strada Fierului'; 
+
+--    Eroarea are codul = -20001 si mesajul = ORA-20001: Nu exista cartea ceruta Carte necunoscuta in baza noastra de date.
+--    carte carti.nume%TYPE := 'Carte necunoscuta';
+--    strada locatii.strada%TYPE := 'Strada Doamnei'; 
+
+--    Eroarea are codul = -20002 si mesajul = ORA-20002: Nu exista nicio librarie la adresa data - Strada necunoscuta
+--    carte carti.nume%TYPE := 'Invitatia la vals'; 
+--    strada locatii.strada%TYPE := 'Strada necunoscuta'; 
+BEGIN
+    DBMS_OUTPUT.PUT_LINE('Clientul a platit '||client_cumpara_carte(carte, strada)||' lei pe cartea '||carte|| '.');
+    
+    EXCEPTION
+        WHEN OTHERS THEN
+            DBMS_OUTPUT.PUT_LINE('Eroarea are codul = '||SQLCODE || ' si mesajul = ' || SQLERRM);
+END;
+/
+
+
+--EXERCITIUL 9.4 si 9.5 (Triggeri pe tabel mutating) Trigger de tip LMD la nivel de comand? ?i Trigger de tip LMD la nivel de linie
+--Cerin??:
+--Se aplic? reducere de 10% la cump?rarea unei c?r?i dac? clientul cump?r? una din ultimele 4 exemplare g?site pe stoc per carte 
+--(la nivelul tuturor libr?riilor).  Se va specifica dac? prime?te reducere printr-un mesaj sugestiv ?i modificarea de pre? care 
+--va fi ?i actualizat? pe bon. Trebuie s? se aiba grij? ?i de stoc, adic? s? se ?tearg? din list? cartea dac? nu mai sunt 
+--exemplare la acea libr?rie.
+--Mod de actualizare: 
+--?	Utilitatea triggerilor la nivel de comand? ?i de linie: se modifica pre?ul c?r?ii cump?rate de pe bon (din tabelul BON) 
+--?	Actualizarea se face o singura de fiecare dat? (atunci când cineva cump?r? a patra carte, apoi dac? sunt mai pu?in de 4 c?r?i)
+--?	Este nevoie si de un alt trigger care s? ?tearg? cartea din stocul libr?riei respectivei în cazul în care nu mai sunt exemplare
+
+CREATE OR REPLACE PACKAGE pachet_trigger
+IS
+    TYPE evidenta IS TABLE OF stocuri.cod_carte%TYPE;
+    carti_aplic_reducere evidenta;
+    reducere NUMBER := 0;
+    cod_bon bonuri.cod_bon%TYPE;
+END;
+/
+
+CREATE OR REPLACE TRIGGER retinere_carti_reducere
+AFTER INSERT ON bonuri
+FOR EACH ROW
+DECLARE
+   index_carte NUMBER;
+begin
+    pachet_trigger.reducere := 0;
+    pachet_trigger.cod_bon := 0;
+    
+    SELECT cod_carte
+    BULK COLLECT INTO pachet_trigger.carti_aplic_reducere
+    FROM stocuri  
+    GROUP BY cod_carte
+    HAVING SUM(nr_exemplare) < 4;
+    
+    index_carte := pachet_trigger.carti_aplic_reducere.FIRST;
+    WHILE index_carte <= pachet_trigger.carti_aplic_reducere.LAST AND pachet_trigger.reducere = 0 LOOP
+        IF pachet_trigger.carti_aplic_reducere(index_carte) = :NEW.cod_carte THEN
+            pachet_trigger.cod_bon := :NEW.cod_bon;
+            pachet_trigger.reducere := 1;
+        END IF;
+        
+        index_carte := pachet_trigger.carti_aplic_reducere.NEXT(index_carte);
+    END LOOP;
+END;
+/
+
+CREATE OR REPLACE TRIGGER aplicare_reducere
+AFTER INSERT ON bonuri
+DECLARE
+    v_pret bonuri.pret%TYPE;
+BEGIN
+    IF pachet_trigger.reducere = 1 THEN
+        DBMS_OUTPUT.PUT_LINE(' Se aplica reducere de 10% deoarece cumparati una dintre ultimele 4 exemplare din stoc'); 
+
+        SELECT pret into v_pret
+        FROM bonuri
+        WHERE cod_bon = pachet_trigger.cod_bon;
+      
+        DBMS_OUTPUT.PUT('Din ' || v_pret || ' pretul devine ');
+        
+        UPDATE bonuri
+        SET pret = pret - 0.1 * pret
+        WHERE cod_bon = pachet_trigger.cod_bon
+        RETURNING pret into v_pret;
+        
+        DBMS_OUTPUT.PUT_LINE(v_pret ||'.'); 
+    END IF;
+END;
+/
+
+--trigger la nivel de comanda pentru stergere din stoc daca nu mai sunt exemplare
+CREATE OR REPLACE TRIGGER nu_mai_exista_pe_stoc
+AFTER UPDATE of nr_exemplare on stocuri
+BEGIN
+    DELETE FROM stocuri
+    WHERE nr_exemplare = 0;   
+end; 
+/
+
+
+DECLARE
+-- cartea nu se gaseste la acea locatie
+--    carte carti.nume%type := 'Mireasa pe masura'; 
+--    strada locatii.strada%type := 'Strada Fierului'; 
+    
+-- va primi reducere 
+    carte carti.nume%TYPE := 'Limanul mult dorit';
+    strada locatii.strada%TYPE := 'Strada Fierului';    
+BEGIN
+    DBMS_OUTPUT.PUT_LINE('Clientul a platit '||client_cumpara_carte(carte, strada)||' lei pe cartea '||carte|| '.');
+    EXCEPTION
+        WHEN OTHERS THEN
+            DBMS_OUTPUT.PUT_LINE(SQLERRM);
+END;
+/
+
+--insert into stocuri values (107, 50, 5);
+
+
+-- EXERCITIUL 9.6: Trigger de tip LDD
+--Clientii nu au voie sa modifice baza de date din spatele aplicatiei, iar modificarile facute trebuie sa nu intervina cu 
+--programul deschis publicului. Asadar pentru schimbari referitoare la obiecte ale schemei  sau ale bazei de date, administratorul 
+--trebuie sa le faca in intervale orare specifice.
+--Se stie ca in zilele lucratoare, librariile sunt deschise de la 8:00 la 20:00, sambata de la 10:00 la 19:00, iar duminica 
+--de la 12:00 la 16:00. 
+--Triggerul creat va limita modificari la nivel de schema si are nevoie de o procedura pentru a putea insera in tabel modificarea 
+--dorita, precum si un mesaj corespunzator.
+
+CREATE SEQUENCE SEQ_INFO
+INCREMENT by 1
+START WITH 1
+MAXVALUE 1000
+NOCYCLE;
+
+CREATE TABLE info (
+    cod NUMBER CONSTRAINT PKEY_INFORMARII PRIMARY KEY,
+    utilizator VARCHAR2(30) NOT NULL,
+    nume_bd VARCHAR2(50),
+    eveniment VARCHAR2(20),
+    nume_obiect VARCHAR2(30),
+    data DATE NOT NULL,
+    mesaj VARCHAR2(40) NOT NULL
+);
+
+CREATE OR REPLACE PROCEDURE inserez_in_info(cod NUMBER)
+IS 
+    mesaj VARCHAR2(40); 
+    PRAGMA autonomous_transaction;
+BEGIN
+    IF cod = 0 THEN
+        mesaj := 'SUCCES';
+    ELSIF cod = 1 THEN
+        mesaj := 'EROARE: IN AFARA PROGRAMULUI'; 
+    ELSIF cod = 2 THEN 
+        mesaj :=  'EROARE: NOT ADMIN';
+    ELSE
+        mesaj := 'EROARE NECUNOSCUTA';
+    END IF;	
+
+    INSERT INTO info
+    VALUES (SEQ_INFO.NEXTVAL, SYS.LOGIN_USER, SYS.DATABASE_NAME, SYS.SYSEVENT, SYS.DICTIONARY_OBJ_NAME, SYSDATE, mesaj);
+    COMMIT;
+END inserez_in_info;
+/
+
+CREATE OR REPLACE TRIGGER LDD
+BEFORE CREATE OR DROP OR ALTER ON SCHEMA
+BEGIN 
+    --pentru duminica 
+    IF (TO_CHAR(SYSDATE, 'D') = 1 AND (TO_CHAR(SYSDATE,'HH24') BETWEEN 12 AND 16))
+    OR
+    --pentru sambata
+    (TO_CHAR(SYSDATE, 'D') = 7 AND (TO_CHAR(SYSDATE,'HH24') BETWEEN 10 AND 19)) 
+    OR
+    --pentru zilele lucratoare
+    (TO_CHAR(SYSDATE, 'D') <> 1 AND to_char(SYSDATE, 'D') <> 7 AND (TO_CHAR(SYSDATE,'HH24') BETWEEN 8 AND 20)) 					 
+    THEN  
+        inserez_in_info(1);
+        RAISE_APPLICATION_ERROR(-20000, 'Nu sunt permise modificari ale schemei in timpul programului cu publicul');
+    ELSE
+        --doar administratorul poate modifica
+        IF SYS.login_user <> 'SBD' THEN 
+            inserez_in_info(2);      
+            RAISE_APPLICATION_ERROR(-20001, 'Doar administratorul poate modifica baza de date');
+        END IF;
+    END IF;
+    
+    inserez_in_info(0);
+END;
+/
+
+CREATE TABLE TEST(i INT);
+DROP  TABLE TEST;
+
+SELECT * FROM info;
+
+
+--EXERCITUL 9.7
+CREATE OR REPLACE PACKAGE pachet
+IS
+    PROCEDURE categoriile_cele_mai_vandute;
+
+    PROCEDURE pret_serie;
+
+    FUNCTION client_cumpara_carte(p_carte_ceruta carti.nume%TYPE DEFAULT 'no_name',
+                                 p_librarie_solicitanta locatii.strada%TYPE DEFAULT 'no_adress')
+    RETURN carti.pret%TYPE;
+END;
+/
+
+CREATE OR REPLACE PACKAGE BODY pachet
+IS 
+    PROCEDURE categoriile_cele_mai_vandute
+    IS
+        -- tip de date record pentru a retine detalii despre o carte vanduta
+        TYPE info_carte_record IS RECORD (
+            nume CARTI.nume%TYPE,
+            cod are.cod_carte%TYPE,
+            copies_sold NUMBER
+        );
+        
+        -- tablou imbricat pentru a retine informatii despre toate cartile vandute 
+        TYPE info_carte_tip IS TABLE OF info_carte_record;
+        v_carti_vandute info_carte_tip;
+        
+        -- tablou imbricat in care se va retine numarul de vanzari a fiecarei categorii vandute
+        TYPE count_categorie_tip IS TABLE OF NUMBER INDEX BY PLS_INTEGER;
+        v_count_categorii count_categorie_tip;
+        
+        -- Vector in care retin coduri cartilor care se incadreaza intr-o categories
+        TYPE coduri_carti_tip IS VARRAY(100) OF carti.cod_carte%TYPE;
+        v_coduri_carti coduri_carti_tip := coduri_carti_tip();
+        
+        v_maxim NUMBER := 0;
+        v_categorie categorii.gen%TYPE;
+    BEGIN
+        -- Pastrarea cartilor vandute si numarului de vanzari
+        SELECT c.nume, b.cod_carte, COUNT(*)
+        BULK COLLECT INTO v_carti_vandute
+        FROM carti c RIGHT JOIN bonuri b ON c.cod_carte = b.cod_carte
+        WHERE EXTRACT(YEAR FROM data_bon) = EXTRACT(YEAR FROM SYSDATE)
+        GROUP BY c.nume, b.cod_carte;
+        
+        -- determinarea categoriilor care au fost vandute si a numarului de vanzari
+        FOR index_carte IN v_carti_vandute.FIRST .. v_carti_vandute.LAST 
+        LOOP
+            FOR categorie IN (
+                                SELECT DISTINCT cod_categorie cod
+                                FROM are 
+                                WHERE v_carti_vandute(index_carte).cod = are.cod_carte
+                              ) 
+            LOOP
+                IF v_count_categorii.EXISTS(categorie.cod)
+                THEN
+                    v_count_categorii(categorie.cod) := v_count_categorii(categorie.cod) + v_carti_vandute(index_carte).copies_sold;
+                ELSE
+                    v_count_categorii(categorie.cod) := v_carti_vandute(index_carte).copies_sold;
+                END IF;
+                
+                IF v_count_categorii(categorie.cod) > v_maxim 
+                THEN
+                    v_maxim := v_count_categorii(categorie.cod);
+                END IF;
+            END LOOP;
+        END LOOP;
+        
+        IF v_maxim <> 0 
+        THEN
+            DBMS_OUTPUT.PUT_LINE('Numarul maxim de carti dintr-un anumit tip de categorie vandute: ' || v_maxim);
+            DBMS_OUTPUT.PUT_LINE('');
+            
+            -- Match-uirea categorie-carte si afisarea informatiilor dorite
+            FOR index_cod_categorie IN v_count_categorii.FIRST .. v_count_categorii.LAST LOOP
+                IF v_count_categorii.EXISTS(index_cod_categorie) THEN 
+                    IF v_count_categorii(index_cod_categorie) = v_maxim THEN
+                        SELECT gen into v_categorie
+                        FROM categorii
+                        WHERE cod_categorie = index_cod_categorie;
+                        
+                        DBMS_OUTPUT.PUT_LINE('> Categorie:  '|| v_categorie);
+                        
+                        SELECT DISTINCT cod_carte 
+                        BULK COLLECT INTO v_coduri_carti 
+                        FROM are 
+                        WHERE index_cod_categorie = are.cod_categorie;
+                        
+                        FOR index_cod IN v_coduri_carti.FIRST .. v_coduri_carti.LAST LOOP
+                            FOR index_carte IN v_carti_vandute.FIRST .. v_carti_vandute.LAST LOOP
+                                IF v_carti_vandute(index_carte).cod = v_coduri_carti(index_cod) THEN
+                                    DBMS_OUTPUT.PUT_LINE(' - ' || 
+                                                        v_carti_vandute(index_carte).nume || 
+                                                        ': vanduta de ' || 
+                                                        v_carti_vandute(index_carte).copies_sold || ' ori');
+                                END IF;
+                            END LOOP;
+                        END LOOP;
+                    END IF;
+                END IF;
+            END LOOP;
+        ELSE 
+            DBMS_OUTPUT.PUT_LINE('Nu au fost cumparate carti in anul curent.');
+        END IF;
+        
+    END categoriile_cele_mai_vandute;
+    
+    
+    PROCEDURE pret_serie
+    IS
+        CURSOR scriitori_cu_carti IS
+            SELECT nume, prenume, cod_scriitor, NVL(aparitii, 0) 
+            FROM scriitori LEFT JOIN (
+                                        SELECT cod_scriitor, COUNT(DISTINCT(cod_carte)) aparitii
+                                        FROM are
+                                        GROUP BY cod_scriitor
+                                    ) USING (cod_scriitor);
+              
+        CURSOR suma_serie (p_cod_scriitor scriitori.cod_scriitor%TYPE) IS
+            SELECT sum(pret) suma, serii.nume
+            FROM carti LEFT JOIN serii USING (cod_serie)
+            WHERE cod_serie IS NOT NULL 
+                AND cod_carte IN (  
+                                    SELECT DISTINCT cod_carte 
+                                    FROM are
+                                    WHERE cod_scriitor = p_cod_scriitor 
+                                  )
+            GROUP BY serii.nume;
+        
+        v_serie serii.nume%TYPE;
+        v_suma NUMBER;
+        v_cod_scriitor scriitori.cod_scriitor%TYPE;
+        v_nume scriitori.nume%TYPE;
+        v_prenume scriitori.prenume%TYPE; 
+        v_aparitii NUMBER;
+    BEGIN
+        OPEN scriitori_cu_carti;
+        LOOP
+            FETCH scriitori_cu_carti INTO v_nume, v_prenume, v_cod_scriitor, v_aparitii;
+            EXIT WHEN scriitori_cu_carti%NOTFOUND;
+            
+            DBMS_OUTPUT.PUT_LINE(CHR(10)||'Scriitorul '||v_nume||' '||v_prenume);
+               
+            IF v_aparitii <> 0 
+            THEN 
+                OPEN suma_serie(v_cod_scriitor);
+                LOOP
+                    FETCH suma_serie INTO v_suma, v_serie;
+                    EXIT WHEN suma_serie%NOTFOUND;
+                    
+                    DBMS_OUTPUT.PUT_LINE(CHR(9) ||'Seria "'||v_serie||'" costa '||v_suma|| ' lei.');
+                END LOOP;
+                
+                IF suma_serie%ROWCOUNT = 0 THEN 
+                    DBMS_OUTPUT.PUT_LINE(CHR(9) ||'Nu exista in librarie nicio serie scrisa de acest scriitor.');
+                END IF;
+                
+                CLOSE suma_serie;
+            ELSE 
+                 DBMS_OUTPUT.PUT_LINE(CHR(9) ||'Nu exista in librarie nicio carte scrisa de acest scriitor.');
+            END IF;   
+        END LOOP; 
+        
+        IF scriitori_cu_carti%ROWCOUNT = 0 THEN 
+            DBMS_OUTPUT.PUT_LINE(CHR(10) ||'Nu exista niciun scriitor in baza de date.');
+        END IF;
+                
+        CLOSE scriitori_cu_carti;
+        
+        EXCEPTION
+           WHEN OTHERS THEN
+                INSERT INTO mesaje 
+                VALUES (SEQ_ERROR.NEXTVAL, 'A aparut o eroare necunoscuta', 'E', SYS.LOGIN_USER, SYSDATE);
+                RAISE_APPLICATION_ERROR(-20004, 'A aparut o eroare necunoscuta');
+    END pret_serie;
+    
+    
+    FUNCTION client_cumpara_carte(p_carte_ceruta carti.nume%TYPE DEFAULT 'no_name',
+                                  p_librarie_solicitanta locatii.strada%TYPE DEFAULT 'no_adress')
+        RETURN carti.pret%TYPE IS
+        
+        v_evidenta NUMBER;
+        v_cod_carte stocuri.cod_carte%TYPE;
+        v_cod_librarie_care_vinde stocuri.cod_librarie%TYPE;
+        v_pret_cumparare carti.pret%TYPE;
+        v_bon bonuri%ROWTYPE;
+        NU_EXISTA_CARTE EXCEPTION;
+        NU_EXISTA_LIBRARIE EXCEPTION;
+        NU_EXISTA_CARTEA_PE_STOC EXCEPTION;
+        v_mesaj_eroare VARCHAR2(100);
+    BEGIN
+        SELECT COUNT(*)
+        INTO v_evidenta
+        FROM carti
+        WHERE UPPER(nume) = UPPER(p_carte_ceruta);
+        
+        IF v_evidenta = 0 THEN
+            RAISE NU_EXISTA_CARTE;
+        END IF;
+        
+        SELECT COUNT(*)
+        INTO v_evidenta
+        FROM locatii
+        WHERE UPPER(strada) = UPPER(p_librarie_solicitanta);
+        
+        IF v_evidenta = 0 THEN
+            RAISE NU_EXISTA_LIBRARIE;
+        END IF;
+        
+        UPDATE stocuri 
+        SET nr_exemplare = nr_exemplare - 1
+        WHERE (cod_carte, cod_librarie) = 
+                (   -- daca cartea se gaseste in librarie, select-ul va intoarce o linie
+                    SELECT cod_carte, st.cod_librarie   
+                    FROM locatii loc JOIN librarii lib ON (loc.cod_locatie=lib.cod_locatie) 
+                                     JOIN (-- selectez toate codurile librariile in care se gaseste cartea dorita
+                                            SELECT cod_carte, cod_librarie    
+                                            FROM carti JOIN stocuri USING (cod_carte)
+                                            WHERE UPPER(nume) = UPPER(p_carte_ceruta)
+                                          ) st ON(st.cod_librarie = lib.cod_librarie) 
+                    WHERE UPPER(strada) = UPPER (p_librarie_solicitanta) 
+                )
+        RETURNING cod_carte, cod_librarie INTO v_cod_carte, v_cod_librarie_care_vinde;
+           
+        -- UPDATE nu intoarce NO_DATA_FOUND 
+        IF SQL%rowcount = 0 THEN    
+            RAISE NU_EXISTA_CARTEA_PE_STOC;    
+        END IF;
+        
+        -- carte este vanduta, se selecteaza pretul pentru a putea crea bonul 
+        SELECT pret 
+        INTO v_pret_cumparare
+        FROM carti
+        WHERE cod_carte = v_cod_carte; 
+    
+        SELECT SEQ_CUMP.NEXTVAL, v_pret_cumparare, 
+                                SYSDATE, v_cod_carte, (
+                                    SELECT cod_angajat
+                                    FROM (  -- se alege in mod random un vanzator care lucreaza la acea librarie
+                                            -- pentru ca fiecare sa aiba sansa egala de a vinde 
+                                            SELECT cod_angajat  
+                                            FROM angajati
+                                            WHERE cod_librarie = v_cod_librarie_care_vinde AND LOWER(tip_angajat) = 'vanzator'
+                                            ORDER BY DBMS_RANDOM.RANDOM
+                                        )
+                                    WHERE ROWNUM = 1
+                                )  
+        INTO v_bon
+        FROM dual;
+        
+        INSERT INTO bonuri 
+        VALUES v_bon;
+        
+        -- cartea poate avea reducere, deci preluam din nou bonul pentru a-l putea transmite clientului
+        SELECT pret 
+        INTO v_pret_cumparare
+        FROM bonuri
+        WHERE cod_bon = v_bon.cod_bon; 
+    
+        RETURN v_pret_cumparare;
+        
+        EXCEPTION
+            WHEN NU_EXISTA_CARTE THEN 
+                v_mesaj_eroare := 'Nu exista cartea ceruta '|| p_carte_ceruta || ' in baza noastra de date.';
+                INSERT INTO mesaje 
+                VALUES (SEQ_ERROR.NEXTVAL, v_mesaj_eroare, 'E', SYS.LOGIN_USER, SYSDATE); 
+                RAISE_APPLICATION_ERROR(-20001, v_mesaj_eroare);
+                
+            WHEN NU_EXISTA_LIBRARIE THEN 
+                v_mesaj_eroare := 'Nu exista nicio librarie la adresa data - '|| p_librarie_solicitanta;
+                INSERT INTO mesaje 
+                VALUES (SEQ_ERROR.NEXTVAL, v_mesaj_eroare, 'E', SYS.LOGIN_USER, SYSDATE);
+                RAISE_APPLICATION_ERROR(-20002, v_mesaj_eroare);
+                  
+            WHEN NU_EXISTA_CARTEA_PE_STOC THEN 
+                v_mesaj_eroare := 'Ne pare rau, nu avem cartea '|| p_carte_ceruta || 
+                                    ' pe stoc la locatia ' || p_librarie_solicitanta;
+                INSERT INTO mesaje 
+                VALUES (SEQ_ERROR.NEXTVAL, v_mesaj_eroare, 'E', SYS.LOGIN_USER, SYSDATE);
+                RAISE_APPLICATION_ERROR(-20003, v_mesaj_eroare);
+                                        
+            WHEN OTHERS THEN
+                v_mesaj_eroare := SQLERRM;
+                INSERT INTO mesaje 
+                VALUES (SEQ_ERROR.NEXTVAL, v_mesaj_eroare, 'E', SYS.LOGIN_USER, SYSDATE);
+                RAISE_APPLICATION_ERROR(-20004, v_mesaj_eroare);
+    END client_cumpara_carte;
+END;
+/
+
+DECLARE
+--    SUCCES
+--    carte carti.nume%TYPE := 'Mireasa pe masura'; 
+--    strada locatii.strada%TYPE := 'Strada Doamnei'; 
+
+--    Eroarea are codul = -20003 si mesajul = ORA-20003: Ne pare rau, nu avem cartea Invitatia la vals pe stoc la locatia Strada Fierului
+    carte carti.nume%TYPE := 'Invitatia la vals';
+    strada locatii.strada%TYPE := 'Strada Fierului'; 
+
+--    Eroarea are codul = -20001 si mesajul = ORA-20001: Nu exista cartea ceruta Carte necunoscuta in baza noastra de date.
+--    carte carti.nume%TYPE := 'Carte necunoscuta';
+--    strada locatii.strada%TYPE := 'Strada Doamnei'; 
+
+--    Eroarea are codul = -20002 si mesajul = ORA-20002: Nu exista nicio librarie la adresa data - Strada necunoscuta
+--    carte carti.nume%TYPE := 'Invitatia la vals'; 
+--    strada locatii.strada%TYPE := 'Strada necunoscuta'; 
+BEGIN
+    pachet.categoriile_cele_mai_vandute;
+    
+    pachet.pret_serie;
+    
+    DBMS_OUTPUT.PUT_LINE('Clientul a platit ' || pachet.client_cumpara_carte(carte, strada) || 
+                        ' lei pe cartea ' || carte || '.');
+    EXCEPTION
+       WHEN OTHERS THEN 
+            DBMS_OUTPUT.PUT_LINE('Eroarea are codul = '||SQLCODE || ' si mesajul = ' || SQLERRM);
+END;
+/
+
+
+-- EXERCITUL 10
+CREATE SEQUENCE SEQ_ERROR
+INCREMENT by 1
+START WITH 1
+MAXVALUE 1000
+NOCYCLE;
+
+SELECT *
+FROM mesaje;
+

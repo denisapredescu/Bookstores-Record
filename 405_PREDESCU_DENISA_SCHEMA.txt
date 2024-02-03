@@ -1,0 +1,562 @@
+CREATE TABLE CATEGORII (
+    cod_categorie NUMBER(5) CONSTRAINT pkey_categorie PRIMARY KEY,
+    parinte_cod_categorie NUMBER(5) CONSTRAINT fkey_parinte_categorie REFERENCES categorii (cod_categorie),
+    gen VARCHAR2(25) CONSTRAINT gen NOT NULL
+);
+
+CREATE TABLE SERII (
+    cod_serie NUMBER(5) CONSTRAINT pkey_serie PRIMARY KEY,
+    nume VARCHAR2(25) NOT NULL
+);
+
+CREATE TABLE CARTI (
+    cod_carte NUMBER(5) CONSTRAINT pkey_carte PRIMARY KEY,
+    nume VARCHAR2(100) CONSTRAINT denumire_carte NOT NULL,
+    numar_pagini NUMBER(5),
+    pret NUMBER(5,2),
+    an_aparitie NUMBER(4),
+    numar_volum NUMBER(2) DEFAULT NULL,
+    cod_serie NUMBER(5)CONSTRAINT fkey_carte_serie REFERENCES serii (cod_serie)
+);
+
+CREATE TABLE LIMBI(
+    cod_limba NUMBER(5) CONSTRAINT pkey_limba PRIMARY KEY,
+    limba VARCHAR2(25) NOT NULL
+);
+
+CREATE TABLE SCRIITORI(
+    cod_scriitor NUMBER(5) CONSTRAINT pkey_scriitor PRIMARY KEY,
+    nume VARCHAR2(25) NOT NULL,
+    prenume VARCHAR2(25),
+    nationalitate VARCHAR2(12),
+    sex CHAR(1),
+    data_nastere DATE DEFAULT NULL,
+    data_deces DATE DEFAULT NULL
+);
+
+CREATE TABLE ORASE (
+    cod_oras NUMBER(5) CONSTRAINT pkey_oras PRIMARY KEY,
+    denumire VARCHAR2(25) NOT NULL,
+    judet VARCHAR2(25),
+    cod_postal CHAR(6)
+);
+
+CREATE TABLE LOCATII (
+    cod_locatie NUMBER(5),
+    cod_oras NUMBER(5) CONSTRAINT fk_locatie_oras REFERENCES orase (cod_oras),
+        CONSTRAINT pk_compus PRIMARY KEY(cod_locatie, cod_oras),
+    strada VARCHAR2(50) NOT NULL,
+    numar NUMBER(4)
+);
+
+CREATE TABLE LIBRARII(
+    cod_librarie NUMBER(5) CONSTRAINT pk_librarie PRIMARY KEY,
+    data_infiintare DATE DEFAULT sysDATE,
+    denumire VARCHAR2(25) NOT NULL,
+    cod_locatie NUMBER(5),
+    cod_oras NUMBER(5),
+    CONSTRAINT fk_compus foreign KEY(cod_locatie, cod_oras) REFERENCES locatii (cod_locatie, cod_oras) 
+);
+
+CREATE TABLE ANGAJATI(
+    cod_angajat NUMBER(5) CONSTRAINT pkey_angajat PRIMARY KEY,
+    nume VARCHAR2(25) NOT NULL,
+    prenume VARCHAR2(25),
+    salariu NUMBER(4),
+    telefon CHAR(10),
+    sex CHAR(1),
+    tip_angajat VARCHAR2(25) NOT NULL,
+    cod_librarie NUMBER(5) CONSTRAINT fkey_ang_librarie REFERENCES librarii (cod_librarie)
+);
+
+CREATE TABLE BONURI (
+    cod_bon NUMBER(5) CONSTRAINT pk_bon PRIMARY KEY,
+    pret NUMBER(5,2),
+    data_bon DATE DEFAULT sysDATE,
+    cod_carte NUMBER(5) CONSTRAINT fk_bon_carte REFERENCES carti(cod_carte),
+    cod_angajat NUMBER(5) CONSTRAINT fk_bon_ang REFERENCES angajati (cod_angajat)
+);
+
+CREATE TABLE ARE (
+    cod_scriitor NUMBER(5), 
+    cod_carte NUMBER(5),
+    cod_categorie NUMBER(5),
+    CONSTRAINT fk_are_scriitor foreign KEY(cod_scriitor) REFERENCES scriitori (cod_scriitor),
+    CONSTRAINT fk_are_carte foreign KEY(cod_carte) REFERENCES carti (cod_carte),
+    CONSTRAINT fk_are_categorie foreign KEY(cod_categorie) REFERENCES categorii (cod_categorie),
+    CONSTRAINT pk_compus_are PRIMARY KEY(cod_scriitor, cod_carte, cod_categorie)
+);
+
+CREATE TABLE STOCURI(
+    cod_carte NUMBER(5),
+    cod_librarie NUMBER(5),
+    nr_exemplare NUMBER(2),
+    CONSTRAINT fk_stoc_carte foreign KEY(cod_carte) REFERENCES carti (cod_carte),
+    CONSTRAINT fk_stoc_librarie foreign KEY(cod_librarie) REFERENCES librarii (cod_librarie),
+    CONSTRAINT pk_compus_stoc PRIMARY KEY(cod_carte, cod_librarie)
+);
+
+CREATE TABLE TRADUCERI (
+    cod_carte NUMBER(5) CONSTRAINT fk_trad_carte REFERENCES carti(cod_carte),
+    cod_limba NUMBER(5) CONSTRAINT fk_trad_limba REFERENCES limbi(cod_limba),
+    CONSTRAINT pk_compus_trad PRIMARY KEY(cod_carte, cod_limba)
+);
+
+----------------------------------------------- SCRIITORI -------------------------------------------------------------
+CREATE SEQUENCE SEQ_SCRIITORI
+INCREMENT by 1
+START WITH 100
+MAXVALUE 10000
+NOCYCLE;
+
+INSERT INTO  scriitori  
+VALUES (SEQ_SCRIITORI.NEXTVAL, 'Oke', 'Janette', 'Canadiana', 'f', to_date('18-02-1935','dd-mm-yyyy'), null);
+INSERT INTO  scriitori  
+VALUES (SEQ_SCRIITORI.NEXTVAL, 'Dickens', 'Charles', 'Britanica', 'm', to_date('07-02-1812','dd-mm-yyyy'), to_date('09-06-1870','dd-mm-yyyy'));
+INSERT INTO  scriitori  
+VALUES (SEQ_SCRIITORI.NEXTVAL, 'Witemeyer', 'Karen', 'Americana', 'f', null, null);
+INSERT INTO  scriitori  
+VALUES (SEQ_SCRIITORI.NEXTVAL, 'Drumes', 'Mihail', 'Romana', 'm', to_date('26-11-1901','dd-mm-yyyy'), to_date('07-02-1982','dd-mm-yyyy'));
+INSERT INTO  scriitori  
+VALUES (SEQ_SCRIITORI.NEXTVAL, 'Bunn', 'T. Davis', 'Americana', 'm',to_date('01-01-1952','dd-mm-yyyy'), null);
+INSERT INTO  scriitori  
+VALUES (SEQ_SCRIITORI.NEXTVAL, 'Rowling', 'J.K.', 'Britanica', 'f',to_date('31-07-1965','dd-mm-yyyy'), null);
+INSERT INTO  scriitori  
+VALUES (SEQ_SCRIITORI.NEXTVAL, 'Dumas', 'Alexandre', 'Franceza', 'm',to_date('24-07-1802','dd-mm-yyyy'), to_date('05-12-1870','dd-mm-yyyy'));
+INSERT INTO  scriitori  
+VALUES (SEQ_SCRIITORI.NEXTVAL, 'Tolstoi', 'Lev', 'Rusa', 'm',to_date('09-09-1828','dd-mm-yyyy'), to_date('20-11-1910','dd-mm-yyyy'));
+COMMIT;
+
+--------------------------------------------- SERII --------------------------------------------------------------- 
+CREATE SEQUENCE SEQ_SERII
+INCREMENT by 10
+START WITH 300
+MAXVALUE 10000
+NOCYCLE;
+
+INSERT INTO serii  
+VALUES(SEQ_SERII.NEXTVAL,'Anotimpurile inimii');
+INSERT INTO serii  
+VALUES(SEQ_SERII.NEXTVAL,'Cantecul Acadiei');
+INSERT INTO serii  
+VALUES(SEQ_SERII.NEXTVAL,'Faptele credintei');
+INSERT INTO serii  
+VALUES(SEQ_SERII.NEXTVAL, 'Harry Potter');
+INSERT INTO serii  
+VALUES(SEQ_SERII.NEXTVAL, 'Cei trei muschetari');
+COMMIT;
+
+----------------------------------------------- CARTI ------------------------------------------------------------- 
+CREATE SEQUENCE SEQ_CARTI
+INCREMENT by 1
+START WITH 100
+MAXVALUE 10000
+NOCYCLE;
+
+INSERT INTO carti  
+VALUES(SEQ_CARTI.NEXTVAL, 'Invitatia la vals',336, 30.60, 1936, null, null);  
+INSERT INTO carti  
+VALUES(SEQ_CARTI.NEXTVAL, 'Cu capul in nori',315, 31, 2010, null, null);     
+INSERT INTO carti  
+VALUES(SEQ_CARTI.NEXTVAL, 'Mireasa pe masura',295, 28.50, 2010, null, null); 
+INSERT INTO carti  
+VALUES(SEQ_CARTI.NEXTVAL, 'Marile sperante',544, 30, 1861, null, null);
+
+INSERT INTO carti  
+VALUES(SEQ_CARTI.NEXTVAL, 'Mostenirea', 294 , 27, 2001, 3, 310);  --seria Cantecul Acadiei -oke si bunn
+INSERT INTO carti  
+VALUES(SEQ_CARTI.NEXTVAL, 'Binecuvantatul tarm',286, 28.5 , 1936, 2, 310); 
+INSERT INTO carti  
+VALUES(SEQ_CARTI.NEXTVAL, 'Locul de intalnire',318, 27, 1999, 1, 310); 
+INSERT INTO carti  
+VALUES(SEQ_CARTI.NEXTVAL, 'Limanul mult dorit',324, 27, 2000, 5 , 310); 
+INSERT INTO carti  
+VALUES(SEQ_CARTI.NEXTVAL, 'Un far calauzitor',256, 27, 2002, 4, 310); 
+
+INSERT INTO carti  
+VALUES(SEQ_CARTI.NEXTVAL, 'A fost odata intr-o vara',224, 21.85, 1981, 1, 300);     --scrise de Oke
+INSERT INTO carti  
+VALUES(SEQ_CARTI.NEXTVAL, 'Promisiunea unei noi primaveri',222, 21.85, 1989, 4, 300); 
+INSERT INTO carti  
+VALUES(SEQ_CARTI.NEXTVAL, 'Vanturi tomnatice',220, 21.85, 1987, 2, 300); 
+INSERT INTO carti  
+VALUES(SEQ_CARTI.NEXTVAL, 'Iarna nu tine o vesnicie',216, 21.85, 1988, 3, 300); 
+
+INSERT INTO carti  
+VALUES(SEQ_CARTI.NEXTVAL, 'Sotia Centurionului',321, 35, 2010, 1, 320);    --Bunn si Oke
+INSERT INTO carti  
+VALUES(SEQ_CARTI.NEXTVAL, 'Flacara ascunsa',388, 35, 2011, 2, 320); 
+INSERT INTO carti  
+VALUES(SEQ_CARTI.NEXTVAL, 'Drumul spre Damasc',432, 35, 2011, 3, 320); 
+
+INSERT INTO carti  
+VALUES(SEQ_CARTI.NEXTVAL, 'Harry Potter si camera secretelor',400, 48.48, 1998, 2, 330); 
+INSERT INTO carti  
+VALUES(SEQ_CARTI.NEXTVAL, 'Harry Potter si pocalul de foc',728, 58, 2000, 4, 330);
+INSERT INTO carti  
+VALUES(SEQ_CARTI.NEXTVAL, 'Harry Potter si printul semisange', 650, 64.64, 2005, 6, 330);
+INSERT INTO carti  
+VALUES(SEQ_CARTI.NEXTVAL, 'Harry Potter si talismanele mortii',784, 64.64, 2007, 7, 330);
+INSERT INTO carti  
+VALUES(SEQ_CARTI.NEXTVAL, 'Harry Potter si ordinul phoenix',990, 64.64, 2003, 5, 330);
+INSERT INTO carti  
+VALUES(SEQ_CARTI.NEXTVAL, 'Harry Potter si piatra filosofala',532, 42, 1997, 1, 330);
+INSERT INTO carti  
+VALUES(SEQ_CARTI.NEXTVAL, 'Harry Potter si prizonierul din Azkaban',464, 48.48, 1999, 3, 330);
+
+INSERT INTO carti  
+VALUES(SEQ_CARTI.NEXTVAL, 'Cei trei muschetari',224, 21, 1844, 1, 340);
+INSERT INTO carti  
+VALUES(SEQ_CARTI.NEXTVAL, 'Dupa 20 de ani',622, 33, 1845, 2, 340);
+
+INSERT INTO carti  
+VALUES(SEQ_CARTI.NEXTVAL, 'O mie ?i una de nopti',4800, 199, null, null, null);
+
+COMMIT;
+--------------------------------------------- CATEGORII ------------------------------------------------------------ 
+CREATE SEQUENCE SEQ_CATEG
+INCREMENT by 1
+START WITH 10
+MAXVALUE 10000
+NOCYCLE;
+
+INSERT INTO categorii VALUES(SEQ_CATEG.NEXTVAL,'fictiune', NULL);
+INSERT INTO categorii VALUES(SEQ_CATEG.NEXTVAL,'non-fictiune', NULL);
+INSERT INTO categorii VALUES(SEQ_CATEG.NEXTVAL,'romantic', 10);
+INSERT INTO categorii VALUES(SEQ_CATEG.NEXTVAL,'istoric', 11);
+INSERT INTO categorii VALUES(SEQ_CATEG.NEXTVAL,'crestin', 10);
+INSERT INTO categorii VALUES(SEQ_CATEG.NEXTVAL,'aventura', 10);
+COMMIT;
+
+--Janette Oke 100 si Bunn - 104  --seria cantecul Acadiei
+--carti 104 - 108
+--gen : fictiune-10, crestin-14
+INSERT INTO are VALUES(100,104,10); 
+INSERT INTO are VALUES(100,105,10);  
+INSERT INTO are VALUES(100,106,10);  
+INSERT INTO are VALUES(100,107,10);
+INSERT INTO are VALUES(100,108,10);
+
+INSERT INTO are VALUES(100,104,14); 
+INSERT INTO are VALUES(100,105,14);
+INSERT INTO are VALUES(100,106,14);  
+INSERT INTO are VALUES(100,107,14);
+INSERT INTO are VALUES(100,108,14);
+
+INSERT INTO are VALUES(104,104,10); 
+INSERT INTO are VALUES(104,105,10); 
+INSERT INTO are VALUES(104,106,10);  
+INSERT INTO are VALUES(104,107,10);
+INSERT INTO are VALUES(104,108,10);
+
+INSERT INTO are VALUES(104,104,14); 
+INSERT INTO are VALUES(104,105,14);  
+INSERT INTO are VALUES(104,106,14);  
+INSERT INTO are VALUES(104,107,14);
+INSERT INTO are VALUES(104,108,14);
+
+--Seria Anotimpurile inimii(cartile 109,110,111,112) 
+INSERT INTO are VALUES(100,109,14);     --crestin-14
+INSERT INTO are VALUES(100,110,14);     
+INSERT INTO are VALUES(100,111,14);
+INSERT INTO are VALUES(100,112,14);
+
+INSERT INTO are VALUES(100,109,12);     --romantic-12
+INSERT INTO are VALUES(100,110,12);     
+INSERT INTO are VALUES(100,111,12);
+INSERT INTO are VALUES(100,112,12);
+
+INSERT INTO are VALUES(100,109,13);     --istoric-13
+INSERT INTO are VALUES(100,110,13);     
+INSERT INTO are VALUES(100,111,13);
+INSERT INTO are VALUES(100,112,13); 
+
+INSERT INTO are VALUES(100,109,11);     --non-fictiune-11
+INSERT INTO are VALUES(100,110,11);     
+INSERT INTO are VALUES(100,111,11);
+INSERT INTO are VALUES(100,112,11); 
+--102 -karen Witemeyer 
+--romane 101, 102
+INSERT INTO are VALUES(102,101,12);    --romantic 12
+INSERT INTO are VALUES(102,102,12);     
+
+INSERT INTO are VALUES(102,101,10);    --fictiune  10
+INSERT INTO are VALUES(102,102,10);
+
+INSERT INTO are VALUES(102,101,14);    --crestin 14
+INSERT INTO are VALUES(102,102,14);
+
+--Oke(100) si Bun(104)--seria Faptele credintei(320)(cartile:113, 114, 115)  
+-- crestin-14, aventura -15
+INSERT INTO are VALUES(100, 113, 14);   
+INSERT INTO are VALUES(100, 114, 14);
+INSERT INTO are VALUES(100, 115, 14);
+INSERT INTO are VALUES(100, 113, 15);   
+INSERT INTO are VALUES(100, 114, 15);
+INSERT INTO are VALUES(100, 115, 15);
+
+INSERT INTO are VALUES(104, 113, 14);
+INSERT INTO are VALUES(104, 114, 14);
+INSERT INTO are VALUES(104, 115, 14);
+INSERT INTO are VALUES(104, 113, 15);
+INSERT INTO are VALUES(104, 114, 15);
+INSERT INTO are VALUES(104, 115, 15);
+COMMIT;
+
+--drumes-103 - carti invitatie la vals 100 - 11 non-fictiune -12 romantic
+INSERT INTO are VALUES(103,100,12);   
+INSERT INTO are VALUES(103,100,11)
+--INSERT INTO are VALUES(103,100,16);
+
+--Harry potter - 116-....-122  --autoare-105- fictiune 10,  fantastic 17, mister 19
+INSERT INTO are VALUES(105,116,10);
+INSERT INTO are VALUES(105,117,10);
+INSERT INTO are VALUES(105,118,10);
+INSERT INTO are VALUES(105,119,10);
+INSERT INTO are VALUES(105,120,10);
+INSERT INTO are VALUES(105,121,10);
+INSERT INTO are VALUES(105,122,10);
+
+-- dumas -106   - carte 123: categorie 13- istoric, 15- aventura; carte 124: categorie 13,15
+INSERT INTO are VALUES(106, 123, 13);
+INSERT INTO are VALUES(106, 123, 15);
+INSERT INTO are VALUES(106, 124, 13);
+INSERT INTO are VALUES(106, 124, 15);
+
+--dickens - marile sperante 10, 15, fictiune, aventura
+INSERT INTO are VALUES(101, 103, 10);
+INSERT INTO are VALUES(101, 103, 15);
+COMMIT;
+
+SELECT * FROM categorii;
+SELECT * FROM are;
+
+--------------------------------------------- ORASE -------------------------------------------------------------
+CREATE SEQUENCE SEQ_ORASE
+INCREMENT by 10
+START WITH 1000
+MAXVALUE 10000
+NOCYCLE;
+
+INSERT INTO orase VALUES(SEQ_ORASE.NEXTVAL, 'Bucuresti', null, '012581');
+INSERT INTO orase VALUES(SEQ_ORASE.NEXTVAL, 'Oradea', 'Bihor', '410001');
+INSERT INTO orase VALUES(SEQ_ORASE.NEXTVAL, 'Cluj-Napoca', 'Cluj', '010292');
+INSERT INTO orase VALUES(SEQ_ORASE.NEXTVAL, 'Iasi', 'Iasi', '700028');
+INSERT INTO orase VALUES(SEQ_ORASE.NEXTVAL, 'Drobeta Turnul Severin', 'Mehedinti', '220036');
+INSERT INTO orase VALUES(SEQ_ORASE.NEXTVAL, 'Voluntari', 'Ilfov', '077191');
+COMMIT;
+
+SELECT * FROM orase;
+
+--------------------------------------------- LOCATII -------------------------------------------------------------
+CREATE SEQUENCE SEQ_LOC
+INCREMENT by 10
+START WITH 90
+MAXVALUE 1000
+NOCYCLE;
+
+INSERT INTO locatii VALUES(SEQ_LOC.NEXTVAL, 1000, 'Strada Doamnei', 20);
+INSERT INTO locatii VALUES(SEQ_LOC.NEXTVAL, 1020, 'Strada Fierului', 2);
+INSERT INTO locatii VALUES(SEQ_LOC.NEXTVAL, 1020, 'Strada Republicii', 35);
+INSERT INTO locatii VALUES(SEQ_LOC.NEXTVAL, 1010, 'Strada Avram Iancu', 10);
+INSERT INTO locatii VALUES(SEQ_LOC.NEXTVAL, 1030, 'Strada Vasile Lupu', 148);
+INSERT INTO locatii VALUES(SEQ_LOC.NEXTVAL, 1040, 'Strada Gheorghe Sincai', 17);
+INSERT INTO locatii VALUES(SEQ_LOC.NEXTVAL, 1000, 'Strada Baltaretului', 7);
+COMMIT;
+
+SELECT * FROM locatii;
+
+--------------------------------------------- LIBRARII -------------------------------------------------------------
+CREATE SEQUENCE SEQ_LIBR
+INCREMENT by 10
+START WITH 40
+MAXVALUE 1000
+NOCYCLE;
+
+INSERT INTO librarii VALUES(SEQ_LIBR.NEXTVAL,to_date('10-10-2015','dd-mm-yyyy'), 'Libraria Iulius',90,	1000);
+INSERT INTO librarii VALUES(SEQ_LIBR.NEXTVAL,to_date('06-11-2020','dd-mm-yyyy'), 'Libraria Iulius',100,	1020);
+INSERT INTO librarii VALUES(SEQ_LIBR.NEXTVAL,to_date('04-06-2017','dd-mm-yyyy'), 'Libraria Iulius',130,	1030);
+INSERT INTO librarii VALUES(SEQ_LIBR.NEXTVAL,to_date('10-08-2010','dd-mm-yyyy'), 'Libraria Iulius',120,	1010);
+INSERT INTO librarii VALUES(SEQ_LIBR.NEXTVAL,to_date('16-05-2008','dd-mm-yyyy'), 'Libraria Iulius',110,	1020);
+COMMIT;
+
+SELECT * FROM librarii;
+
+---------------------------------------------- ANGAJATI ------------------------------------------------------------
+CREATE SEQUENCE SEQ_ANG
+INCREMENT by 1
+START WITH 400
+MAXVALUE 10000
+NOCYCLE;
+
+INSERT INTO angajati VALUES(SEQ_ANG.NEXTVAL, 'Popescu', 'Maria', 1275, '0761234567','f','vanzator',40);
+INSERT INTO angajati VALUES(SEQ_ANG.NEXTVAL, 'Popa', 'Marin', 2450, '0761236666','m','vanzator',60);
+INSERT INTO angajati VALUES(SEQ_ANG.NEXTVAL, 'Ionescu', 'Adiel', 2725, '0769999967','m','vanzator',70);
+INSERT INTO angajati VALUES(SEQ_ANG.NEXTVAL, 'Marinescu', 'Claudiu', 1600, '0761234000','m','vanzator',80);
+INSERT INTO angajati VALUES(SEQ_ANG.NEXTVAL, 'Ionescu', 'Mircea', 1550, '0731114567','m','ingrijitor',80);
+INSERT INTO angajati VALUES(SEQ_ANG.NEXTVAL, 'Georgescu', 'Aurica', 1500, '0724444413','f','ingrijitor',70);
+INSERT INTO angajati VALUES(SEQ_ANG.NEXTVAL, 'Popa', 'Marinela', 1450, '0760004567','f','ingrijitor',60);
+INSERT INTO angajati VALUES(SEQ_ANG.NEXTVAL, 'Noiescu', 'Amalia', 1970, '0761233357','f','ingrijitor',40);
+INSERT INTO angajati VALUES(SEQ_ANG.NEXTVAL, 'Iona', 'Adrian', 1300, '0733333387','m','vanzator',40);
+INSERT INTO angajati VALUES(SEQ_ANG.NEXTVAL, 'Popovici', 'Adina', 1750, '0727677606','f','vanzator',50);
+INSERT INTO angajati VALUES(SEQ_ANG.NEXTVAL, 'Mihaita', 'Claudia', 1000, '0729090909','f','vanzator',50);
+INSERT INTO angajati VALUES(SEQ_ANG.NEXTVAL, 'Vasilescu', 'Lenuta', 1600, '0761114597','f','ingrijitor',50);
+COMMIT;
+
+SELECT * FROM CARTI;
+
+----------------------------------------------- BONURI --------------------------------------------------------- 
+CREATE SEQUENCE SEQ_CUMP
+INCREMENT by 1
+START WITH 100
+MAXVALUE 1000
+NOCYCLE; 
+                                                                                        ---carte-angajat
+INSERT INTO bonuri VALUES(SEQ_CUMP.NEXTVAL , 12.2, to_date('20-04-2023 11:30', 'dd-mm-yyyy hh24:mi'),100,400);
+INSERT INTO bonuri VALUES(SEQ_CUMP.NEXTVAL , 23.1, to_date('20-07-2022 21:17', 'dd-mm-yyyy hh24:mi'),115,408);
+INSERT INTO bonuri VALUES(SEQ_CUMP.NEXTVAL , 32.00, to_date('20-07-2022 21:17', 'dd-mm-yyyy hh24:mi'),114,408);
+INSERT INTO bonuri VALUES(SEQ_CUMP.NEXTVAL , 43.99, to_date('20-07-2022 21:17', 'dd-mm-yyyy hh24:mi'),113,408);
+INSERT INTO bonuri VALUES(SEQ_CUMP.NEXTVAL , 22, to_date('04-10-2011 13:55', 'dd-mm-yyyy hh24:mi'),103,401);
+INSERT INTO bonuri VALUES(SEQ_CUMP.NEXTVAL , 43, to_date('25-03-2023 11:30', 'dd-mm-yyyy hh24:mi'),104,409);
+INSERT INTO bonuri VALUES(SEQ_CUMP.NEXTVAL , 28.5, to_date('25-03-2023 17:00', 'dd-mm-yyyy hh24:mi'),102,410);
+INSERT INTO bonuri VALUES(SEQ_CUMP.NEXTVAL , 27, to_date('26-02-2023 10:00', 'dd-mm-yyyy hh24:mi'),104,409);
+INSERT INTO bonuri VALUES(SEQ_CUMP.NEXTVAL , 48.48, to_date('13-10-2022 16:44', 'dd-mm-yyyy hh24:mi'),116,410);
+INSERT INTO bonuri VALUES(SEQ_CUMP.NEXTVAL , 21, to_date('29-08-2020 14:02', 'dd-mm-yyyy hh24:mi'),123,410);
+INSERT INTO bonuri VALUES(SEQ_CUMP.NEXTVAL , 28.5, to_date('15-09-2021 15:17', 'dd-mm-yyyy hh24:mi'),105,402);
+INSERT INTO bonuri VALUES(SEQ_CUMP.NEXTVAL, 35, to_date('15-08-2022 15:17', 'dd-mm-yyyy hh24:mi'),115,400);
+COMMIT;
+
+SELECT * FROM bonuri;
+
+----------------------------------------------- STOCURI ------------------------------------------------------------- 
+INSERT INTO stocuri values(100, 40, 2);
+INSERT INTO stocuri values(115, 40, 3);
+INSERT INTO stocuri values(114, 40, 1);
+INSERT INTO stocuri values(113, 40, 4);
+INSERT INTO stocuri values(103, 80, 3);
+INSERT INTO stocuri values(104, 60, 5);
+INSERT INTO stocuri values(102, 50, 2);
+INSERT INTO stocuri values(104, 80, 6);
+INSERT INTO stocuri values(116, 50, 4);
+INSERT INTO stocuri values(123, 50, 4);
+INSERT INTO stocuri values(105, 70, 3);
+INSERT INTO stocuri values(100, 60, 2);
+INSERT INTO stocuri values(101, 80, 1);
+INSERT INTO stocuri values(102, 40, 2);
+INSERT INTO stocuri values(103, 60, 3);
+INSERT INTO stocuri values(104, 50, 6);
+INSERT INTO stocuri values(105, 50, 4);
+INSERT INTO stocuri values(106, 50, 4);
+INSERT INTO stocuri values(107, 50, 5);
+INSERT INTO stocuri values(108, 50, 4);
+INSERT INTO stocuri values(109, 80, 3);
+INSERT INTO stocuri values(110, 80, 2);
+INSERT INTO stocuri values(111, 80, 3);
+INSERT INTO stocuri values(112, 80, 5);
+INSERT INTO stocuri values(103, 50, 6);
+INSERT INTO stocuri values(114, 50, 7);
+INSERT INTO stocuri values(115, 50, 10);
+INSERT INTO stocuri values(116, 70, 12);
+INSERT INTO stocuri values(117, 70, 11);
+INSERT INTO stocuri values(118, 70, 2);
+INSERT INTO stocuri values(119, 70, 7);
+INSERT INTO stocuri values(120, 70, 8);
+INSERT INTO stocuri values(121, 70, 4);
+INSERT INTO stocuri values(122, 70, 6);
+INSERT INTO stocuri values(123, 60, 8);
+INSERT INTO stocuri values(124, 60, 9);
+INSERT INTO stocuri values(109, 40, 4);
+INSERT INTO stocuri values(109, 60, 5);
+INSERT INTO stocuri values(123, 70, 9);
+INSERT INTO stocuri values(124, 70, 6);
+COMMIT;
+
+--------------------------------------------- LIMBI -------------------------------------------------------------
+CREATE SEQUENCE SEQ_LB
+INCREMENT by 10
+START WITH 10
+MAXVALUE 10000
+NOCYCLE;
+
+insert into limbi values (SEQ_LB.NEXTVAL,'romana');  --20
+insert into limbi values (SEQ_LB.NEXTVAL,'engleza');  --30
+insert into limbi values (SEQ_LB.NEXTVAL,'franceza');  --40
+insert into limbi values (SEQ_LB.NEXTVAL,'germana');  --50
+insert into limbi values (SEQ_LB.NEXTVAL,'rusa');  --60
+COMMIT;
+
+SELECT * FROM carti;
+SELECT * FROM limbi;
+SELECT * FROM traduceri;
+--------------------------------------------- TRADUCERI -------------------------------------------------------------
+insert into traduceri values(100,10);
+insert into traduceri values(101,10);
+insert into traduceri values(102,10);
+insert into traduceri values(103,10);
+insert into traduceri values(104,10);
+insert into traduceri values(105,10);
+insert into traduceri values(106,10);
+
+insert into traduceri values(104,20);
+insert into traduceri values(105,20);
+insert into traduceri values(106,20);
+insert into traduceri values(107,20);
+insert into traduceri values(108,20);
+
+insert into traduceri values(109,10);
+insert into traduceri values(110,10);
+insert into traduceri values(111,10);
+insert into traduceri values(112,10);
+
+insert into traduceri values(113,10);
+insert into traduceri values(114,10);
+insert into traduceri values(115,10);
+
+insert into traduceri values(113,20);
+insert into traduceri values(114,20);
+insert into traduceri values(115,20);
+
+insert into traduceri values(116,10);
+insert into traduceri values(117,10);
+insert into traduceri values(118,10);
+insert into traduceri values(119,10);
+insert into traduceri values(120,10);
+insert into traduceri values(121,10);
+insert into traduceri values(122,10);
+
+insert into traduceri values(116,20);
+insert into traduceri values(117,20);
+insert into traduceri values(118,20);
+insert into traduceri values(119,20);
+insert into traduceri values(120,20);
+insert into traduceri values(121,20);
+insert into traduceri values(122,20);
+
+insert into traduceri values(116,30);
+insert into traduceri values(117,30);
+insert into traduceri values(118,30);
+insert into traduceri values(119,30);
+insert into traduceri values(120,30);
+insert into traduceri values(121,30);
+insert into traduceri values(122,30);
+
+insert into traduceri values(123,10);
+insert into traduceri values(124,10);
+
+insert into traduceri values(123,30);
+insert into traduceri values(124,30);
+
+insert into traduceri values(103,10);
+COMMIT;
+
+SELECT * FROM stocuri;
+SELECT * FROM scriitori;
+SELECT * FROM categorii;
+SELECT * FROM are;
+SELECT * FROM carti;
+SELECT * FROM serii;
+SELECT * FROM angajati;
+SELECT * FROM bonuri;
+SELECT * FROM librarii;
+SELECT * FROM locatii;
+SELECT * FROM orase;
